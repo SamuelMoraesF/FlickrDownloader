@@ -1,0 +1,105 @@
+#!/usr/bin/php
+<?php
+
+    require_once __DIR__.'/ProgressBar/Manager.php';
+    require_once __DIR__.'/ProgressBar/Registry.php';
+
+    function getPhotos($page) {
+
+        global $argv;
+
+        $postfields = array();
+        $postfields["api_key"] = "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
+        $postfields["format"] = "json";
+        $postfields["method"] = "flickr.people.getPhotos";
+        $postfields["user_id"] = $argv[1];
+        $postfields["extras"] = "url_o,original_format";
+        $postfields["per_page"] = 200;
+        $postfields["page"] = $page;
+
+        $query_string = "";
+        foreach ($postfields AS $k=>$v) $query_string .= "$k=".urlencode($v)."&";
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, "https://api.flickr.com/services/rest/");
+        curl_setopt($ch, CURLOPT_POST, 1);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $query_string);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
+        $jsondata = curl_exec($ch);
+        
+        if (curl_error($ch)) {
+            echo "Error: Cannot get page ".$page;
+            exit();
+        }
+        
+        return json_decode(substr(str_replace("jsonFlickrApi(", "", $jsondata), 0, -1), true);
+        
+    }
+    
+    if (!isset($argv[1])) {
+        echo "\nYou need to insert the user ID\n";
+        exit();
+    }
+    
+    $page = 1;
+    $limit = 2;
+    $isset = false;
+    
+    while ($page <= $limit) {
+    
+        $json = getPhotos($page)['photos'];
+        
+        if (!$isset){
+            $limit = $json['pages'];
+            $isset = true;
+            
+            echo "\nGetting ".$json['total']." Photos...\n";
+        }
+        
+        if (!isset($progressBar)) {
+            $progressBar = new \ProgressBar\Manager(0, $json['total']);
+        }
+        
+        if(!file_exists(__DIR__."/photos/")) {
+            if (!mkdir(__DIR__."/photos/")){
+                echo "\nCannot create the photos folder\n";
+                exit();
+            }
+        }
+        
+        foreach ($json['photo'] as $foto) {
+        
+            $filename = explode("/", $foto['url_o']);
+            $filename = array_slice($filename, -1)[0];
+        
+            $path = __DIR__."/photos/".$filename;
+        
+            if (!file_exists($path)) {
+            
+                $success = false;
+                $photo = false;
+
+                while (!$success) {
+                
+                    $photo = @file_get_contents($foto['url_o']);
+                    if ($photo !== false) {
+                        $success = true;
+                        file_put_contents($path, $photo);
+                    } else {
+                        echo "\nCannot get photo: ".$foto['url_o'].", trying again...\n";
+                    }
+            
+                }
+                
+            }
+            
+            $progressBar->advance();
+            
+        }
+    
+    }
+
+?>
